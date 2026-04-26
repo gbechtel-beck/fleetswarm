@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>FLEET / Config</title>
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+<link rel="alternate icon" type="image/png" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -265,20 +268,14 @@
       <input type="checkbox" id="axebch2_enabled"> Enable
     </label>
   </div>
-  <div class="row-2">
-    <div class="field">
-      <label>Display label</label>
-      <input type="text" id="axebch2_label" placeholder="AxeBCH2">
-    </div>
-    <div class="field">
-      <label>BCH address</label>
-      <input type="text" id="axebch2_btc_address" placeholder="bitcoincash:qrr...">
-    </div>
+  <div class="field">
+    <label>Display label</label>
+    <input type="text" id="axebch2_label" placeholder="AxeBCH2">
   </div>
   <div class="field">
     <label>Pool API base URL</label>
-    <input type="text" id="axebch2_base_url" placeholder="http://localhost:3334/api">
-    <div class="hint">AxeBCH2 dev pool — same Public Pool fork, different host.</div>
+    <input type="text" id="axebch2_base_url" placeholder="http://willitmod-dev-axebch2_app_1:3000">
+    <div class="hint">AxeBCH2's <code>/api/pool/workers</code> endpoint returns all workers in one call — no address parameter needed. From inside Umbrel, the internal Docker hostname is typically <code>http://willitmod-dev-axebch2_app_1:3000</code>.</div>
   </div>
 </div>
 
@@ -353,6 +350,9 @@ async function load() {
     if (k === 'unmineable') {
       document.getElementById(k + '_address').value = p.address || '';
       document.getElementById(k + '_coin').value = p.coin || 'KAS';
+    } else if (k === 'axebch2') {
+      // AxeBCH2 has no address field — single-tenant Umbrel pool
+      document.getElementById(k + '_base_url').value = p.base_url || '';
     } else {
       document.getElementById(k + '_btc_address').value = p.btc_address || '';
       document.getElementById(k + '_base_url').value = p.base_url || '';
@@ -381,6 +381,9 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     if (k === 'unmineable') {
       p.address = document.getElementById(k + '_address').value.trim();
       p.coin = document.getElementById(k + '_coin').value.trim() || 'KAS';
+    } else if (k === 'axebch2') {
+      // AxeBCH2 — single-tenant pool, base_url only
+      p.base_url = document.getElementById(k + '_base_url').value.trim();
     } else {
       p.btc_address = document.getElementById(k + '_btc_address').value.trim();
       p.base_url = document.getElementById(k + '_base_url').value.trim();

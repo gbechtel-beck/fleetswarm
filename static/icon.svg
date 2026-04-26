@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffb000"/>
+      <stop offset="100%" stop-color="#fb923c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Bright gradient background — owns its own contrast against any chrome -->
+  <rect width="256" height="256" fill="url(#bg)"/>
+
+  <!-- Connection lines from hub to each node -->
+  <g stroke="#0a0d10" stroke-width="2.5" fill="none" opacity="0.5">
+    <line x1="128" y1="128" x2="128" y2="42"/>
+    <line x1="128" y1="128" x2="202" y2="86"/>
+    <line x1="128" y1="128" x2="202" y2="170"/>
+    <line x1="128" y1="128" x2="128" y2="214"/>
+    <line x1="128" y1="128" x2="54"  y2="170"/>
+    <line x1="128" y1="128" x2="54"  y2="86"/>
+  </g>
+
+  <!-- Six swarm nodes — class colors, all visible against orange bg, dark stroke for definition -->
+  <g stroke="#0a0d10" stroke-width="3">
+    <!-- Top: Avalon (deep blue) -->
+    <circle cx="128" cy="42"  r="13" fill="#1d4ed8"/>
+    <!-- Top-right: BitForge (cyan) -->
+    <circle cx="202" cy="86"  r="13" fill="#0891b2"/>
+    <!-- Right: Bitaxe (white — pops against orange) -->
+    <circle cx="202" cy="170" r="13" fill="#fef3c7"/>
+    <!-- Bottom: Nerd Miner (magenta) -->
+    <circle cx="128" cy="214" r="13" fill="#a21caf"/>
+    <!-- Left: Bitaxe (white) -->
+    <circle cx="54"  cy="170" r="13" fill="#fef3c7"/>
+    <!-- Top-left: BitForge (cyan) -->
+    <circle cx="54"  cy="86"  r="13" fill="#0891b2"/>
+  </g>
+
+  <!-- Central hexagon hub — DARK on bright background for max contrast -->
+  <polygon
+    points="128,82 168,105 168,151 128,174 88,151 88,105"
+    fill="#0a0d10"/>
+
+  <!-- Inner hex outline — bright orange ring inside the dark hub -->
+  <polygon
+    points="128,98 154,113 154,143 128,158 102,143 102,113"
+    fill="none" stroke="#ffb000" stroke-width="2.5"/>
+
+  <!-- Center diamond — the FLEET wordmark mark, bright orange on dark -->
+  <polygon
+    points="128,113 142,128 128,143 114,128"
+    fill="#ffb000"/>
+</svg>

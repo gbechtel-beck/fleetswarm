@@ -99,7 +99,7 @@ def api_fleet():
             """SELECT m.id, m.ip, m.hostname, m.kind, m.online, m.last_seen,
                       s.ts, s.hashrate_ghs, s.temp_c, s.power_w, s.fan_pct,
                       s.shares_accepted, s.shares_rejected, s.best_diff,
-                      s.pool_url, s.worker
+                      s.pool_url, s.worker, s.uptime_s
                FROM miners m
                LEFT JOIN samples s ON s.id = (
                    SELECT id FROM samples WHERE miner_id = m.id
@@ -109,6 +109,12 @@ def api_fleet():
         ).fetchall()
 
     rows = [dict(r) for r in miners]
+
+    # Compute reject percentage per miner for the new card layout
+    for r in rows:
+        acc = r.get("shares_accepted") or 0
+        rej = r.get("shares_rejected") or 0
+        r["reject_pct"] = ((rej / (acc + rej)) * 100) if (acc + rej) > 0 else None
 
     # Totals — only count online miners
     total_hashrate = sum(r["hashrate_ghs"] or 0 for r in rows if r["online"])

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FLEET / Miner Swarm</title>
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+<link rel="alternate icon" type="image/png" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -198,7 +201,7 @@
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 3px;
-    padding: 14px 14px 12px;
+    padding: 12px 14px 10px;
     position: relative;
     overflow: hidden;
     transition: border-color 0.15s;
@@ -224,7 +227,7 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     margin-left: 8px;
   }
   .card-name {
@@ -248,18 +251,25 @@
     font-size: 10px;
     color: var(--text-faint);
     margin-left: 8px;
-    margin-top: -8px;
-    margin-bottom: 10px;
+    margin-top: -6px;
+    margin-bottom: 8px;
   }
   .card-ip a { color: var(--text-dim); text-decoration: none; }
   .card-ip a:hover { color: var(--accent); text-decoration: underline; }
 
   .hashrate-display {
     margin-left: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .hashrate-main {
     display: flex;
     align-items: baseline;
     gap: 6px;
+    min-width: 0;
   }
   .hashrate-display .num {
     font-size: 28px;
@@ -274,6 +284,33 @@
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.15em;
+  }
+  .hashrate-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    align-items: flex-end;
+    text-align: right;
+    min-width: 0;
+    flex-shrink: 1;
+    padding-right: 4px;
+    overflow: hidden;
+  }
+  .hashrate-side .meta-row {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .hashrate-side .meta-row .v {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
   }
   .card.offline .hashrate-display .num {
     color: var(--text-faint);
@@ -303,7 +340,19 @@
   .stat-row .v { color: var(--text); }
   .stat-row .v.warm { color: var(--orange); }
   .stat-row .v.hot { color: var(--red); }
+  .stat-row .v.crit { color: var(--red); }
   .stat-row .v.good { color: var(--green); }
+  .stat-row .v .rej-pct {
+    color: var(--text-faint);
+    font-size: 10px;
+    font-weight: 400;
+    margin-left: 4px;
+  }
+  .stat-row .v.warm .rej-pct,
+  .stat-row .v.crit .rej-pct {
+    color: inherit;
+    opacity: 0.75;
+  }
 
   .status-dot {
     position: absolute;
@@ -411,15 +460,31 @@
     border-top: 1px solid var(--line);
     padding: 14px 24px;
     margin-top: 24px;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
     font-size: 10px;
     color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.15em;
   }
+  .footer > div:last-child { text-align: right; }
+  .footer-cred {
+    text-align: center;
+    color: var(--text-faint);
+  }
+  .footer-cred .sep {
+    margin: 0 8px;
+    opacity: 0.5;
+  }
   .footer a { color: var(--text-dim); text-decoration: none; }
   .footer a:hover { color: var(--accent); }
+  .footer-cred a {
+    color: var(--text-dim);
+    transition: color 0.15s;
+  }
+  .footer-cred a:hover { color: var(--accent); }
 
   .updating { animation: blink 0.6s ease-in-out; }
   @keyframes blink {
@@ -514,7 +579,12 @@
 </main>
 
 <footer class="footer">
-  <div>FLEET v0.2.1 · Polling every 30s · Last update <span id="last-update">—</span></div>
+  <div>FLEET v0.2.2 · Polling every 30s · Last update <span id="last-update">—</span></div>
+  <div class="footer-cred">
+    <a href="https://solostrike.io" target="_blank" rel="noopener">SoloStrike.io</a>
+    <span class="sep">·</span>
+    <a href="https://github.com/gbechtel-beck/fleetswarm" target="_blank" rel="noopener">Gil Bechtel</a>
+  </div>
   <div><a href="/api/fleet" target="_blank">JSON</a> · <a href="/api/health" target="_blank">Health</a></div>
 </footer>
 
@@ -584,6 +654,22 @@ function renderCard(m, alertsByClass) {
     'unknown': '—'
   })[m.kind] || m.kind?.toUpperCase();
 
+  // Build the status side-column (uptime / last share / pool host)
+  // We show whichever of these we have. Compact and right-aligned.
+  const statusBits = [];
+  if (m.uptime_s != null) {
+    statusBits.push(`<div class="meta-row">UP <span class="v">${formatUptime(m.uptime_s)}</span></div>`);
+  }
+  if (m.pool_url) {
+    // Strip stratum+tcp:// and port for display
+    const host = String(m.pool_url)
+      .replace(/^stratum\+tcp:\/\//, '')
+      .replace(/^stratum:\/\//, '')
+      .replace(/:\d+$/, '');
+    statusBits.push(`<div class="meta-row" title="${m.pool_url}"><span class="v">${host}</span></div>`);
+  }
+
+  // Build the per-row stats grid below the hashrate display
   const stats = [];
   if (m.temp_c != null)
     stats.push(`<div class="stat-row"><span class="k">Temp</span><span class="v ${tempClass(m.temp_c, m.kind, alertsByClass)}">${m.temp_c.toFixed(1)}°C</span></div>`);
@@ -593,8 +679,16 @@ function renderCard(m, alertsByClass) {
     stats.push(`<div class="stat-row"><span class="k">Fan</span><span class="v">${m.fan_pct}${m.kind === 'avalon' ? ' RPM' : '%'}</span></div>`);
   if (m.shares_accepted != null)
     stats.push(`<div class="stat-row"><span class="k">Acc</span><span class="v">${fmt.num(m.shares_accepted)}</span></div>`);
-  if (m.shares_rejected != null)
-    stats.push(`<div class="stat-row"><span class="k">Rej</span><span class="v ${m.shares_rejected > 0 ? 'warm' : ''}">${fmt.num(m.shares_rejected)}</span></div>`);
+  if (m.shares_rejected != null) {
+    // Show both raw count and percent if we have data on both sides
+    const cls = (m.reject_pct != null && m.reject_pct >= rejectThreshold(m.kind, alertsByClass)) ? 'crit'
+              : (m.shares_rejected > 0 ? 'warm' : '');
+    let rejStr = fmt.num(m.shares_rejected);
+    if (m.reject_pct != null) {
+      rejStr += ` <span class="rej-pct">${m.reject_pct.toFixed(2)}%</span>`;
+    }
+    stats.push(`<div class="stat-row"><span class="k">Rej</span><span class="v ${cls}">${rejStr}</span></div>`);
+  }
   if (m.best_diff)
     stats.push(`<div class="stat-row"><span class="k">Best</span><span class="v good">${formatBestDiff(m.best_diff)}</span></div>`);
   if (offline)
@@ -610,12 +704,35 @@ function renderCard(m, alertsByClass) {
       </div>
       <div class="card-ip"><a href="http://${m.ip}" target="_blank">${m.ip}</a></div>
       <div class="hashrate-display">
-        <span class="num">${fmt.hash(ghs)}</span>
-        <span class="unit">${fmt.hashUnit(ghs)}</span>
+        <div class="hashrate-main">
+          <span class="num">${fmt.hash(ghs)}</span>
+          <span class="unit">${fmt.hashUnit(ghs)}</span>
+        </div>
+        ${statusBits.length ? `<div class="hashrate-side">${statusBits.join('')}</div>` : ''}
       </div>
       <div class="stats">${stats.join('')}</div>
     </div>
   `;
+}
+
+// Format seconds → compact human duration. Used for miner uptime in the status column.
+function formatUptime(s) {
+  if (s == null || s < 0) return '—';
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm';
+  const d = Math.floor(h / 24);
+  return d + 'd ' + (h % 24) + 'h';
+}
+
+// Resolve reject threshold for a miner's class. Used to decide
+// when to color the reject row red instead of yellow.
+function rejectThreshold(kind, alertsByClass) {
+  if (!alertsByClass) return 1.0;
+  const k = (kind === 'unknown') ? 'bitaxe' : kind;
+  return (alertsByClass[k] || alertsByClass.bitaxe || {}).reject_rate_warn_pct ?? 1.0;
 }
 
 const KIND_ORDER = ['bitforge', 'bitaxe', 'avalon', 'nerd', 'unknown'];
@@ -721,12 +838,19 @@ async function refreshPools() {
         body = workers.map(w => {
           // unMineable hashrate is in the coin's native unit (MH/s for KAS, etc.)
           // Other pools convert from H/s to GH/s in the backend, so we render that as-is.
+          // For SHA-256 pools, auto-promote to TH/s above 1000 GH/s to match the dashboard.
           const isUnmineable = p.key === 'unmineable';
-          const hashStr = w.hashrate_ghs != null
-            ? (isUnmineable
-                ? `${Number(w.hashrate_ghs).toLocaleString(undefined, {maximumFractionDigits: 2})} ${p.coin || ''}`
-                : `${Number(w.hashrate_ghs).toFixed(2)} GH/s`)
-            : '—';
+          let hashStr = '—';
+          if (w.hashrate_ghs != null) {
+            if (isUnmineable) {
+              hashStr = `${Number(w.hashrate_ghs).toLocaleString(undefined, {maximumFractionDigits: 2})} ${p.coin || ''}`;
+            } else {
+              const ghs = Number(w.hashrate_ghs);
+              hashStr = ghs >= 1000
+                ? `${(ghs / 1000).toFixed(2)} TH/s`
+                : `${ghs.toFixed(2)} GH/s`;
+            }
+          }
           const bestStr = w.best_diff ? formatBestDiff(w.best_diff) : '';
           return `<div class="pool-worker">
             <span class="w-name">${(w.worker_name || '—').slice(0, 36)}</span>

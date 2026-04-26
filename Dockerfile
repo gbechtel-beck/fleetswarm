@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir flask==3.0.3 requests==2.32.3
 
 COPY app/ /app/
 COPY templates/ /app/templates/
+COPY static/ /app/static/
 
 # Persistent volume for DB + config — user-mounted via docker-compose
 VOLUME /data

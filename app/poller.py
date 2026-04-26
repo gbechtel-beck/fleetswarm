@@ -55,6 +55,7 @@ def init_db():
                 best_diff TEXT,
                 pool_url TEXT,
                 worker TEXT,
+                uptime_s INTEGER,
                 raw_json TEXT,
                 FOREIGN KEY (miner_id) REFERENCES miners(id)
             );
@@ -74,6 +75,12 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_pool_workers_pool ON pool_workers(pool_key);
         """)
+
+        # Migration: add uptime_s column to samples if missing (v0.2.2 upgrade)
+        cols = [r[1] for r in db.execute("PRAGMA table_info(samples)").fetchall()]
+        if "uptime_s" not in cols:
+            db.execute("ALTER TABLE samples ADD COLUMN uptime_s INTEGER")
+
         db.commit()
 
 
@@ -118,8 +125,10 @@ DEFAULT_CONFIG = {
         "axebch2": {
             "enabled": False,
             "label": "AxeBCH2",
-            "base_url": "",          # e.g. http://localhost:3334/api
-            "btc_address": "",       # the BCH worker address you mine to
+            # AxeBCH2 is a single-tenant Umbrel app — endpoint is /api/pool/workers,
+            # no address parameter needed. From inside Umbrel use the internal
+            # Docker hostname; from outside, the LAN IP + app proxy port.
+            "base_url": "http://willitmod-dev-axebch2_app_1:3000",
         },
         "unmineable": {
             "enabled": False,
@@ -213,6 +222,7 @@ def poll_axeos(ip):
             "shares_accepted": d.get("sharesAccepted"),
             "shares_rejected": d.get("sharesRejected"),
             "best_diff": str(d.get("bestSessionDiff") or d.get("bestDiff") or ""),
+            "uptime_s": d.get("uptimeSeconds") or d.get("uptime"),
             "pool_url": d.get("stratumURL") or d.get("stratumUrl"),
             "worker": d.get("stratumUser"),
             "raw": d,
@@ -302,6 +312,8 @@ def poll_avalon(ip):
     pool_url = None
     worker = None
     accepted = rejected = None
+    best_share = None
+    elapsed_s = None
     if summary_raw:
         try:
             sumj = json.loads(summary_raw)
@@ -309,6 +321,9 @@ def poll_avalon(ip):
                 s0 = sumj["SUMMARY"][0]
                 accepted = s0.get("Accepted")
                 rejected = s0.get("Rejected")
+                # Avalon's CGMiner summary exposes Best Share as raw integer difficulty
+                best_share = s0.get("Best Share")
+                elapsed_s = s0.get("Elapsed")
         except json.JSONDecodeError:
             pass
     if pools_raw:
@@ -365,7 +380,8 @@ def poll_avalon(ip):
         "fan_pct": int(fan_avg) if fan_avg else None,
         "shares_accepted": accepted,
         "shares_rejected": rejected,
-        "best_diff": "",  # Avalon doesn't expose session-best the same way
+        "best_diff": str(best_share) if best_share else "",
+        "uptime_s": elapsed_s,
         "pool_url": pool_url,
         "worker": worker,
         "raw": {"estats": fields, "fanRPMs": fan_vals},
@@ -440,17 +456,66 @@ def fetch_ckpool(cfg):
 
 
 def fetch_axebch2(cfg):
-    """AxeBCH2 dev pool — same Public Pool fork as CKPool.
-    Same endpoint shape. Different host, different coin (BCH).
+    """AxeBCH2 self-hosted Umbrel pool.
+
+    Despite being a Public Pool fork, AxeBCH2 exposes a different API shape than
+    upstream CKPool. It serves /api/pool/workers (no address parameter) and
+    returns ALL workers in a single response — perfect for a single-tenant
+    Umbrel app where the pool only has one user (you).
+
+    Schema (verified against ghcr.io/willitmod/axebch2-app:0.1.38-dev):
+        {
+          "workers": 9,
+          "active_workers": 9,
+          "total_workers": 9,
+          "lastshare": 1777192916,
+          "workers_details": [{
+              "workername": "<address>.<label>",  // e.g. "qrr...zqfhd3.QMoney"
+              "hashrate_ths": 87.3,
+              "hashrate_5m_ths": 90.5,
+              "hashrate_1h_ths": 90.8,
+              "lastshare": 1777192916,
+              "lastshare_ago_s": 1,
+              "shares": 8904402,
+              "bestshare": 129665135,
+              "bestever": 129665135,
+              "current_diff": 15814,
+          }]
+        }
+
+    Note: address-based config is ignored on AxeBCH2 — the API is single-tenant.
+    Only base_url is required.
     """
-    if not cfg.get("enabled") or not cfg.get("base_url") or not cfg.get("btc_address"):
+    if not cfg.get("enabled") or not cfg.get("base_url"):
         return []
-    # Identical API contract to ckpool — just call the same endpoint
-    return fetch_ckpool({
-        "enabled": True,
-        "base_url": cfg["base_url"],
-        "btc_address": cfg["btc_address"],
-    })
+    url = f"{cfg['base_url'].rstrip('/')}/api/pool/workers"
+    try:
+        r = requests.get(url, timeout=HTTP_TIMEOUT)
+        if r.status_code != 200:
+            print(f"[pool:axebch2] {url} → HTTP {r.status_code}")
+            return []
+        d = r.json()
+        out = []
+        for w in (d.get("workers_details") or []):
+            # workername is "<address>.<label>" — strip address prefix for cleaner display
+            full_name = w.get("workername", "")
+            display_name = full_name.split(".", 1)[1] if "." in full_name else full_name
+            # Convert TH/s → GH/s for consistent display with CKPool
+            hr_ths = w.get("hashrate_ths") or 0
+            hr_ghs = hr_ths * 1000 if hr_ths else 0
+            out.append({
+                "worker_name": display_name,
+                "hashrate_ghs": hr_ghs,
+                "best_diff": str(w.get("bestever") or w.get("bestshare") or ""),
+                "last_seen": w.get("lastshare"),
+                "raw": w,
+            })
+        if not out:
+            print(f"[pool:axebch2] {url} → 200 OK but workers_details was empty")
+        return out
+    except (requests.RequestException, ValueError, KeyError) as e:
+        print(f"[pool:axebch2] {url} → error: {e}")
+        return []
 
 
 def fetch_unmineable(cfg):
@@ -552,8 +617,8 @@ def insert_sample(conn, miner_id, sample):
     conn.execute(
         """INSERT INTO samples
            (miner_id, ts, hashrate_ghs, temp_c, power_w, fan_pct,
-            shares_accepted, shares_rejected, best_diff, pool_url, worker, raw_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            shares_accepted, shares_rejected, best_diff, pool_url, worker, uptime_s, raw_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             miner_id,
             datetime.now(timezone.utc).isoformat(),
@@ -566,6 +631,7 @@ def insert_sample(conn, miner_id, sample):
             sample.get("best_diff"),
             sample.get("pool_url"),
             sample.get("worker"),
+            sample.get("uptime_s"),
             json.dumps(sample.get("raw") or {})[:8000],
         ),
     )
