@@ -326,6 +326,62 @@
     50% { opacity: 0.4; }
   }
 
+  /* ── Pool cross-reference panel ───────────────────────────────────── */
+  .pools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+  .pool-card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--text-faint);
+    padding: 16px;
+    border-radius: 3px;
+  }
+  .pool-card.has-data { border-left-color: var(--green); }
+  .pool-card.error    { border-left-color: var(--red); }
+  .pool-card.empty    { border-left-color: var(--accent); }
+  .pool-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .pool-name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700; font-size: 13px;
+    color: var(--text); letter-spacing: 0.04em;
+  }
+  .pool-meta {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--text-dim);
+  }
+  .pool-meta.ok { color: var(--green); }
+  .pool-meta.warn { color: var(--accent); }
+  .pool-meta.err { color: var(--red); }
+  .pool-workers {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .pool-worker {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px; align-items: center;
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .pool-worker .w-name {
+    color: var(--text); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pool-worker .w-hash {
+    color: var(--hash); font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .pool-worker .w-best {
+    color: var(--green); font-size: 10px; font-variant-numeric: tabular-nums;
+  }
+  .pool-empty-msg {
+    color: var(--text-faint); font-size: 11px; padding: 4px 0; font-style: italic;
+  }
+
   /* ── Empty state ──────────────────────────────────────────────────── */
   .empty {
     border: 1px dashed var(--line-bright);
@@ -440,6 +496,15 @@
   </div>
   <div class="grid" id="grid-unknown"></div>
 
+  <!-- Pool cross-reference panel — only visible when at least one pool is enabled -->
+  <div id="pools-section" style="display:none; margin-top: 36px;">
+    <div class="section-title">
+      <span>Pool Cross-Reference</span>
+      <span class="count" id="pools-count"></span>
+    </div>
+    <div id="pools-grid" class="pools-grid"></div>
+  </div>
+
   <div id="empty-state" class="empty" style="display:none">
     <h3>No miners found yet</h3>
     <p>The poller is scanning your subnet but hasn't found any AxeOS or CGMiner endpoints. If your fleet is on a different subnet, or if you need to add Avalon Q IPs explicitly, head to <a href="/config" style="color:var(--accent)">/config</a>.</p>
@@ -449,7 +514,7 @@
 </main>
 
 <footer class="footer">
-  <div>FLEET v0.2 · Polling every 30s · Last update <span id="last-update">—</span></div>
+  <div>FLEET v0.2.1 · Polling every 30s · Last update <span id="last-update">—</span></div>
   <div><a href="/api/fleet" target="_blank">JSON</a> · <a href="/api/health" target="_blank">Health</a></div>
 </footer>
 
@@ -606,8 +671,84 @@ async function refresh() {
       (data.miners && data.miners.length) ? 'none' : 'block';
 
     document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+
+    // Pool cross-reference — refresh in parallel, don't block dashboard
+    refreshPools();
   } catch (e) {
     console.error('refresh error', e);
+  }
+}
+
+async function refreshPools() {
+  try {
+    const r = await fetch('/api/pools');
+    const data = await r.json();
+    const pools = (data.pools || []).filter(p => p.enabled);
+
+    const section = document.getElementById('pools-section');
+    if (!pools.length) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    // Count summary: "2/3 pools active" — pools with workers vs total enabled
+    const activeCount = pools.filter(p => (p.workers || []).length > 0).length;
+    document.getElementById('pools-count').textContent = `${activeCount}/${pools.length} active`;
+
+    document.getElementById('pools-grid').innerHTML = pools.map(p => {
+      const workers = p.workers || [];
+      let stateClass, stateLabel;
+      if (!p.configured) {
+        stateClass = 'error'; stateLabel = 'NOT CONFIGURED';
+      } else if (workers.length === 0) {
+        stateClass = 'empty'; stateLabel = 'NO WORKERS';
+      } else {
+        stateClass = 'has-data'; stateLabel = `${workers.length} WORKER${workers.length === 1 ? '' : 'S'}`;
+      }
+
+      const metaClass = stateClass === 'has-data' ? 'ok'
+                      : stateClass === 'error' ? 'err' : 'warn';
+
+      let body;
+      if (workers.length === 0) {
+        body = `<div class="pool-empty-msg">${
+          p.configured
+            ? 'Pool configured but no workers reporting. Check the API endpoint and address.'
+            : 'Configure address + API URL on the Config page to enable.'
+        }</div>`;
+      } else {
+        body = workers.map(w => {
+          // unMineable hashrate is in the coin's native unit (MH/s for KAS, etc.)
+          // Other pools convert from H/s to GH/s in the backend, so we render that as-is.
+          const isUnmineable = p.key === 'unmineable';
+          const hashStr = w.hashrate_ghs != null
+            ? (isUnmineable
+                ? `${Number(w.hashrate_ghs).toLocaleString(undefined, {maximumFractionDigits: 2})} ${p.coin || ''}`
+                : `${Number(w.hashrate_ghs).toFixed(2)} GH/s`)
+            : '—';
+          const bestStr = w.best_diff ? formatBestDiff(w.best_diff) : '';
+          return `<div class="pool-worker">
+            <span class="w-name">${(w.worker_name || '—').slice(0, 36)}</span>
+            <span class="w-hash">${hashStr}</span>
+            <span class="w-best">${bestStr}</span>
+          </div>`;
+        }).join('');
+      }
+
+      const titleSuffix = p.coin ? ` · ${p.coin}` : '';
+      return `
+        <div class="pool-card ${stateClass}">
+          <div class="pool-head">
+            <div class="pool-name">${p.label}${titleSuffix}</div>
+            <div class="pool-meta ${metaClass}">${stateLabel}</div>
+          </div>
+          <div class="pool-workers">${body}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('refreshPools error', e);
   }
 }
 

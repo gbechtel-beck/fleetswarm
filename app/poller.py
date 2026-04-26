@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -409,10 +410,14 @@ def fetch_ckpool(cfg):
     """
     if not cfg.get("enabled") or not cfg.get("base_url") or not cfg.get("btc_address"):
         return []
-    url = f"{cfg['base_url'].rstrip('/')}/client/{cfg['btc_address']}"
+    # URL-encode the address — BCH addresses contain colons (bitcoincash:qrr...)
+    # which would otherwise be treated as port specifiers by some HTTP libraries.
+    addr = quote(cfg["btc_address"], safe="")
+    url = f"{cfg['base_url'].rstrip('/')}/client/{addr}"
     try:
         r = requests.get(url, timeout=HTTP_TIMEOUT)
         if r.status_code != 200:
+            print(f"[pool:ckpool] {url} → HTTP {r.status_code}")
             return []
         d = r.json()
         out = []
@@ -426,8 +431,11 @@ def fetch_ckpool(cfg):
                 "last_seen": w.get("lastSeen"),
                 "raw": w,
             })
+        if not out:
+            print(f"[pool:ckpool] {url} → 200 OK but no workers in response")
         return out
-    except (requests.RequestException, ValueError, KeyError):
+    except (requests.RequestException, ValueError, KeyError) as e:
+        print(f"[pool:ckpool] {url} → error: {e}")
         return []
 
 
@@ -453,31 +461,27 @@ def fetch_unmineable(cfg):
     if not cfg.get("enabled") or not cfg.get("address"):
         return []
     coin = cfg.get("coin", "KAS")
-    url = f"https://api.unminable.com/v4/address/{cfg['address']}?coin={coin}"
+    addr = quote(cfg["address"], safe="")  # kaspa:qz... has a colon
+    url = f"https://api.unminable.com/v4/address/{addr}?coin={coin}"
     try:
         r = requests.get(url, timeout=HTTP_TIMEOUT)
         if r.status_code != 200:
+            print(f"[pool:unmineable] {url} → HTTP {r.status_code}")
             return []
         d = r.json()
-        # unMineable wraps everything in {"success": true, "data": {...}}
         if not d.get("success"):
+            print(f"[pool:unmineable] {url} → success=false")
             return []
         data = d.get("data") or {}
-        # The "miners" array gives per-worker stats.
-        # Hashrate from unMineable is in H/s for SHA-256, MH/s for KAS — they use a
-        # generic .reported_hashrate field with .hashrate_factor for unit, but
-        # typically it's reported in the algo's native unit. Best to store as-is
-        # and label by coin.
         out = []
         for w in (data.get("miners") or []):
             out.append({
                 "worker_name": w.get("worker"),
-                "hashrate_ghs": w.get("reported_hashrate"),  # raw — UI annotates with coin
+                "hashrate_ghs": w.get("reported_hashrate"),
                 "best_diff": "",
                 "last_seen": w.get("last_seen"),
                 "raw": {**w, "_coin": coin, "_balance": data.get("balance")},
             })
-        # If no per-worker data, at least return the aggregate
         if not out and data.get("reported_hashrate") is not None:
             out.append({
                 "worker_name": f"{coin}-aggregate",
@@ -487,7 +491,8 @@ def fetch_unmineable(cfg):
                 "raw": {"_coin": coin, "_balance": data.get("balance"), "_aggregate": True},
             })
         return out
-    except (requests.RequestException, ValueError, KeyError):
+    except (requests.RequestException, ValueError, KeyError) as e:
+        print(f"[pool:unmineable] {url} → error: {e}")
         return []
 
 
