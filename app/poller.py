@@ -59,6 +59,19 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_samples_miner_ts
                 ON samples(miner_id, ts DESC);
+
+            -- Pool worker cross-reference data. Refreshed each cycle, read per-pool.
+            CREATE TABLE IF NOT EXISTS pool_workers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pool_key TEXT NOT NULL,       -- ckpool | axebch2 | unmineable
+                worker_name TEXT,
+                hashrate_ghs REAL,
+                best_diff TEXT,
+                last_seen TEXT,               -- per pool API
+                fetched_at TEXT NOT NULL,     -- when WE fetched
+                raw_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_pool_workers_pool ON pool_workers(pool_key);
         """)
         db.commit()
 
@@ -78,14 +91,42 @@ DEFAULT_CONFIG = {
     "miners": [],          # explicit IPs to always poll, e.g. ["192.168.1.160"]
     "avalon_ips": [],      # CGMiner TCP — Avalon Q
     "scan_enabled": True,
-    "btc_address": "",     # for Public Pool / SoloStrike worker cross-ref
-    "pool_api_url": "",    # e.g. http://localhost/api or https://solostrike.io/api
-    "alerts": {
-        "temp_warn_c": 65,        # cards turn orange above this
-        "temp_critical_c": 75,    # cards turn red and trigger fleet alert above this
-        "reject_rate_warn_pct": 1.0,  # >1% rejected shares = warning
-        "offline_grace_min": 5,   # miner offline this long counts as a fleet alert
-    }
+
+    # Per-class alert thresholds — Avalon hashboards run hot by design (Canaan
+    # spec is 80–90°C normal, 113°C absolute max), Bitaxe/BitForge live around
+    # 60–70°C, Nerd Miners barely break 50°C. Per-class makes more sense than
+    # global because a single threshold either falsely alerts on Avalons or
+    # ignores actual problems on Nerd Miners.
+    "alerts_by_class": {
+        "bitforge": {"temp_warn_c": 65, "temp_critical_c": 75,  "reject_rate_warn_pct": 1.0},
+        "bitaxe":   {"temp_warn_c": 65, "temp_critical_c": 75,  "reject_rate_warn_pct": 1.0},
+        "avalon":   {"temp_warn_c": 90, "temp_critical_c": 100, "reject_rate_warn_pct": 0.5},
+        "nerd":     {"temp_warn_c": 50, "temp_critical_c": 60,  "reject_rate_warn_pct": 2.0},
+        "unknown":  {"temp_warn_c": 65, "temp_critical_c": 75,  "reject_rate_warn_pct": 1.0},
+    },
+    "offline_grace_min": 5,   # global — applies to all classes
+
+    # Three pool cross-reference slots
+    "pools": {
+        "ckpool": {
+            "enabled": False,
+            "label": "Public Pool / SoloStrike",
+            "base_url": "",          # e.g. http://localhost/api or https://solostrike.io/api
+            "btc_address": "",       # used as path arg: /api/client/<addr>
+        },
+        "axebch2": {
+            "enabled": False,
+            "label": "AxeBCH2",
+            "base_url": "",          # e.g. http://localhost:3334/api
+            "btc_address": "",       # the BCH worker address you mine to
+        },
+        "unmineable": {
+            "enabled": False,
+            "label": "unMineable",
+            "address": "",           # your unMineable address
+            "coin": "KAS",           # KAS / ALPH / RVN / etc.
+        },
+    },
 }
 
 
@@ -96,9 +137,41 @@ def load_config():
         return DEFAULT_CONFIG.copy()
     try:
         cfg = json.loads(CONFIG_PATH.read_text())
-        # merge defaults for any missing keys
+        # Merge defaults for any missing keys at every level
         merged = {**DEFAULT_CONFIG, **cfg}
-        merged["alerts"] = {**DEFAULT_CONFIG["alerts"], **cfg.get("alerts", {})}
+
+        # Migration path from 0.1.x → 0.2.x:
+        # Old config had a single flat "alerts" block with offline_grace_min inside it.
+        # If we see that, lift offline_grace_min out and convert thresholds to per-class.
+        migrated_from_v01 = False
+        if "alerts" in cfg and "alerts_by_class" not in cfg:
+            migrated_from_v01 = True
+            old = cfg["alerts"]
+            merged["offline_grace_min"] = old.get("offline_grace_min", 5)
+            merged["alerts_by_class"] = {
+                k: {
+                    "temp_warn_c": old.get("temp_warn_c", v["temp_warn_c"]),
+                    "temp_critical_c": old.get("temp_critical_c", v["temp_critical_c"]),
+                    "reject_rate_warn_pct": old.get("reject_rate_warn_pct", v["reject_rate_warn_pct"]),
+                }
+                for k, v in DEFAULT_CONFIG["alerts_by_class"].items()
+            }
+
+        # Per-class merge for v0.2+ configs — fill missing classes with defaults
+        # (skip if we just migrated, since migration already produced a complete map)
+        if not migrated_from_v01:
+            merged_alerts = dict(DEFAULT_CONFIG["alerts_by_class"])
+            for k, v in (cfg.get("alerts_by_class") or {}).items():
+                if k in merged_alerts:
+                    merged_alerts[k] = {**merged_alerts[k], **v}
+            merged["alerts_by_class"] = merged_alerts
+
+        # Pools merge — preserve any user-set fields, fill in missing slots
+        merged_pools = {}
+        for k, v in DEFAULT_CONFIG["pools"].items():
+            merged_pools[k] = {**v, **(cfg.get("pools") or {}).get(k, {})}
+        merged["pools"] = merged_pools
+
         return merged
     except Exception as e:
         print(f"[config] load failed: {e}, using defaults")
@@ -122,6 +195,12 @@ def poll_axeos(ip):
         # Normalise to our schema
         hostname = d.get("hostname") or d.get("ssid") or ip
         kind = classify_axeos(d, hostname)
+
+        # Round fan to integer — AxeOS sometimes returns the value as a calculated
+        # float (e.g. 44.8386421) which renders ugly in the UI.
+        raw_fan = d.get("fanspeed") or d.get("fanSpeed")
+        fan_pct = int(round(raw_fan)) if raw_fan is not None else None
+
         return {
             "ip": ip,
             "hostname": hostname,
@@ -129,7 +208,7 @@ def poll_axeos(ip):
             "hashrate_ghs": d.get("hashRate") or d.get("hashrate") or 0,
             "temp_c": d.get("temp") or d.get("temperature"),
             "power_w": d.get("power"),
-            "fan_pct": d.get("fanspeed") or d.get("fanSpeed"),
+            "fan_pct": fan_pct,
             "shares_accepted": d.get("sharesAccepted"),
             "shares_rejected": d.get("sharesRejected"),
             "best_diff": str(d.get("bestSessionDiff") or d.get("bestDiff") or ""),
@@ -256,9 +335,28 @@ def poll_avalon(ip):
     fan_vals = [f for f in fan_vals if f is not None]
     fan_avg = sum(fan_vals) / len(fan_vals) if fan_vals else None
 
+    # Hostname fallback: if the worker name looks like a wallet address (bitcoincash:,
+    # bc1, qrr, 1xxx, or just a long hex/base58 blob), use the IP-based name instead.
+    # This avoids the dashboard showing "bitcoincashii:qrr6zd3qjndwcpqq..." as a name.
+    def looks_like_address(s):
+        if not s:
+            return True
+        if len(s) > 26:                           # most worker names are <20 chars
+            return True
+        if ":" in s:                              # bitcoincash:, bitcoin:
+            return True
+        if s.lower().startswith(("bc1", "qrr", "qrl", "qq")):
+            return True
+        return False
+
+    if looks_like_address(worker):
+        hostname = f"Avalon-{ip.rsplit('.', 1)[-1]}"
+    else:
+        hostname = worker
+
     return {
         "ip": ip,
-        "hostname": worker or f"avalon-{ip.rsplit('.', 1)[-1]}",
+        "hostname": hostname,
         "kind": "avalon",
         "hashrate_ghs": ghs,
         "temp_c": temp,
@@ -301,8 +399,131 @@ def discover_axeos(ips, max_workers=40):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Storage
+# Pool cross-reference fetchers
 # ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_ckpool(cfg):
+    """Public Pool / SoloStrike / generic CKPool API.
+    Endpoint: <base_url>/client/<btc_address>
+    Returns list of {worker_name, hashrate_ghs, best_diff, last_seen}.
+    """
+    if not cfg.get("enabled") or not cfg.get("base_url") or not cfg.get("btc_address"):
+        return []
+    url = f"{cfg['base_url'].rstrip('/')}/client/{cfg['btc_address']}"
+    try:
+        r = requests.get(url, timeout=HTTP_TIMEOUT)
+        if r.status_code != 200:
+            return []
+        d = r.json()
+        out = []
+        for w in (d.get("workers") or []):
+            # hashRate is in H/s — convert to GH/s
+            hr_hs = w.get("hashRate") or 0
+            out.append({
+                "worker_name": w.get("name"),
+                "hashrate_ghs": (hr_hs / 1e9) if hr_hs else 0,
+                "best_diff": str(w.get("bestDifficulty") or ""),
+                "last_seen": w.get("lastSeen"),
+                "raw": w,
+            })
+        return out
+    except (requests.RequestException, ValueError, KeyError):
+        return []
+
+
+def fetch_axebch2(cfg):
+    """AxeBCH2 dev pool — same Public Pool fork as CKPool.
+    Same endpoint shape. Different host, different coin (BCH).
+    """
+    if not cfg.get("enabled") or not cfg.get("base_url") or not cfg.get("btc_address"):
+        return []
+    # Identical API contract to ckpool — just call the same endpoint
+    return fetch_ckpool({
+        "enabled": True,
+        "base_url": cfg["base_url"],
+        "btc_address": cfg["btc_address"],
+    })
+
+
+def fetch_unmineable(cfg):
+    """unMineable API — alt-coin auto-exchange pool.
+    Endpoint: https://api.unminable.com/v4/address/<addr>?coin=KAS
+    Returns aggregated hashrate + balance + worker breakdown.
+    """
+    if not cfg.get("enabled") or not cfg.get("address"):
+        return []
+    coin = cfg.get("coin", "KAS")
+    url = f"https://api.unminable.com/v4/address/{cfg['address']}?coin={coin}"
+    try:
+        r = requests.get(url, timeout=HTTP_TIMEOUT)
+        if r.status_code != 200:
+            return []
+        d = r.json()
+        # unMineable wraps everything in {"success": true, "data": {...}}
+        if not d.get("success"):
+            return []
+        data = d.get("data") or {}
+        # The "miners" array gives per-worker stats.
+        # Hashrate from unMineable is in H/s for SHA-256, MH/s for KAS — they use a
+        # generic .reported_hashrate field with .hashrate_factor for unit, but
+        # typically it's reported in the algo's native unit. Best to store as-is
+        # and label by coin.
+        out = []
+        for w in (data.get("miners") or []):
+            out.append({
+                "worker_name": w.get("worker"),
+                "hashrate_ghs": w.get("reported_hashrate"),  # raw — UI annotates with coin
+                "best_diff": "",
+                "last_seen": w.get("last_seen"),
+                "raw": {**w, "_coin": coin, "_balance": data.get("balance")},
+            })
+        # If no per-worker data, at least return the aggregate
+        if not out and data.get("reported_hashrate") is not None:
+            out.append({
+                "worker_name": f"{coin}-aggregate",
+                "hashrate_ghs": data.get("reported_hashrate"),
+                "best_diff": "",
+                "last_seen": None,
+                "raw": {"_coin": coin, "_balance": data.get("balance"), "_aggregate": True},
+            })
+        return out
+    except (requests.RequestException, ValueError, KeyError):
+        return []
+
+
+def refresh_pool_workers(conn, cfg):
+    """Fetch all enabled pools and replace pool_workers contents."""
+    pools_cfg = cfg.get("pools") or {}
+    fetchers = {
+        "ckpool":     fetch_ckpool,
+        "axebch2":    fetch_axebch2,
+        "unmineable": fetch_unmineable,
+    }
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Wipe and replace — pool worker lists are inherently a snapshot
+    conn.execute("DELETE FROM pool_workers")
+
+    for key, fetcher in fetchers.items():
+        pcfg = pools_cfg.get(key, {})
+        if not pcfg.get("enabled"):
+            continue
+        try:
+            workers = fetcher(pcfg)
+            for w in workers:
+                conn.execute(
+                    """INSERT INTO pool_workers
+                       (pool_key, worker_name, hashrate_ghs, best_diff, last_seen, fetched_at, raw_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (key, w.get("worker_name"), w.get("hashrate_ghs"),
+                     w.get("best_diff"), w.get("last_seen"), now,
+                     json.dumps(w.get("raw") or {})[:4000]),
+                )
+        except Exception as e:
+            print(f"[pool:{key}] fetch failed: {e}")
+
+
+
 
 def upsert_miner(conn, sample):
     now = datetime.now(timezone.utc).isoformat()
@@ -408,6 +629,13 @@ def run_one_cycle():
                 errors.append(f"{s.get('ip')}: {e}")
         mark_offline(conn, seen_ips)
         prune_old_samples(conn)
+
+        # 5. Refresh pool cross-references (separate from miner polling)
+        try:
+            refresh_pool_workers(conn, cfg)
+        except Exception as e:
+            errors.append(f"pools: {e}")
+
         conn.commit()
 
     _last_run["ts"] = datetime.now(timezone.utc).isoformat()

@@ -449,7 +449,7 @@
 </main>
 
 <footer class="footer">
-  <div>FLEET v0.1 · Polling every 30s · Last update <span id="last-update">—</span></div>
+  <div>FLEET v0.2 · Polling every 30s · Last update <span id="last-update">—</span></div>
   <div><a href="/api/fleet" target="_blank">JSON</a> · <a href="/api/health" target="_blank">Health</a></div>
 </footer>
 
@@ -480,15 +480,35 @@ const fmt = {
   }
 };
 
-// Threshold-aware temp class — uses values from API so config changes propagate
-function tempClass(t, thresholds) {
+// Threshold-aware temp class — uses per-class values from API so config changes
+// propagate. Falls back to 'unknown' class if miner kind isn't in the map.
+function tempClass(t, kind, alertsByClass) {
   if (t == null) return '';
-  if (t >= (thresholds?.temp_critical_c ?? 75)) return 'hot';
-  if (t >= (thresholds?.temp_warn_c ?? 65)) return 'warm';
+  const thresholds = (alertsByClass && (alertsByClass[kind] || alertsByClass.unknown))
+    || {temp_warn_c: 65, temp_critical_c: 75};
+  if (t >= thresholds.temp_critical_c) return 'hot';
+  if (t >= thresholds.temp_warn_c) return 'warm';
   return 'good';
 }
 
-function renderCard(m, thresholds) {
+// Best Diff formatter: turn raw integers like 39373694 into "39.4M".
+// Best difficulty is unitless — just abbreviate by SI scale.
+function formatBestDiff(d) {
+  if (d == null || d === '') return '';
+  // Already formatted (string with letter suffix like "2.14B" or "41.54G") — leave it
+  if (typeof d === 'string' && /[KMGTPEkmgtpe]$/.test(d.trim())) return d;
+  // Numeric string or number — format it
+  const n = Number(d);
+  if (!Number.isFinite(n) || n === 0) return String(d);
+  if (n >= 1e15) return (n / 1e15).toFixed(2) + 'P';
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'G';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+  return String(Math.round(n));
+}
+
+function renderCard(m, alertsByClass) {
   const offline = !m.online;
   const ghs = m.hashrate_ghs || 0;
   const kindLabel = ({
@@ -501,7 +521,7 @@ function renderCard(m, thresholds) {
 
   const stats = [];
   if (m.temp_c != null)
-    stats.push(`<div class="stat-row"><span class="k">Temp</span><span class="v ${tempClass(m.temp_c, thresholds)}">${m.temp_c.toFixed(1)}°C</span></div>`);
+    stats.push(`<div class="stat-row"><span class="k">Temp</span><span class="v ${tempClass(m.temp_c, m.kind, alertsByClass)}">${m.temp_c.toFixed(1)}°C</span></div>`);
   if (m.power_w != null)
     stats.push(`<div class="stat-row"><span class="k">Power</span><span class="v">${m.power_w.toFixed(1)}W</span></div>`);
   if (m.fan_pct != null)
@@ -511,7 +531,7 @@ function renderCard(m, thresholds) {
   if (m.shares_rejected != null)
     stats.push(`<div class="stat-row"><span class="k">Rej</span><span class="v ${m.shares_rejected > 0 ? 'warm' : ''}">${fmt.num(m.shares_rejected)}</span></div>`);
   if (m.best_diff)
-    stats.push(`<div class="stat-row"><span class="k">Best</span><span class="v good">${m.best_diff}</span></div>`);
+    stats.push(`<div class="stat-row"><span class="k">Best</span><span class="v good">${formatBestDiff(m.best_diff)}</span></div>`);
   if (offline)
     stats.push(`<div class="stat-row"><span class="k">Last seen</span><span class="v">${fmt.age(m.last_seen)}</span></div>`);
 
@@ -563,7 +583,7 @@ async function refresh() {
       buckets[k].push(m);
     });
 
-    const thresholds = data.thresholds || {};
+    const alertsByClass = data.alerts_by_class || {};
 
     KIND_ORDER.forEach(kind => {
       const grid = document.getElementById('grid-' + kind);
@@ -578,7 +598,7 @@ async function refresh() {
       title.style.display = 'flex';
       const onlineN = items.filter(i => i.online).length;
       count.textContent = `${onlineN}/${items.length}`;
-      grid.innerHTML = items.map(m => renderCard(m, thresholds)).join('');
+      grid.innerHTML = items.map(m => renderCard(m, alertsByClass)).join('');
     });
 
     // Empty state

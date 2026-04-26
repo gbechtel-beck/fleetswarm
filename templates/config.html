@@ -10,6 +10,7 @@
     --line: #232b34; --line-bright: #2f3a47;
     --text: #d4dde6; --text-dim: #6b7a8a; --text-faint: #3f4c5b;
     --accent: #ffb000; --green: #4ade80; --red: #ef4444;
+    --bitforge: #06b6d4; --bitaxe: #f59e0b; --avalon: #3b82f6; --nerd: #d946ef;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -36,7 +37,7 @@
       text-transform: uppercase; letter-spacing: 0.15em; }
   a:hover { text-decoration: underline; }
 
-  .wrap { max-width: 800px; margin: 0 auto; }
+  .wrap { max-width: 880px; margin: 0 auto; }
   .panel {
     background: var(--panel); border: 1px solid var(--line);
     padding: 24px; margin-bottom: 20px; border-radius: 3px;
@@ -44,47 +45,61 @@
   h2 { font-family: 'Space Grotesk', sans-serif; font-size: 14px;
        text-transform: uppercase; letter-spacing: 0.18em;
        color: var(--text-dim); margin-bottom: 16px; font-weight: 700; }
+  h2 .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; padding: 2px 6px; border-radius: 2px;
+    margin-left: 10px; vertical-align: middle;
+    background: var(--bg-2); border: 1px solid var(--line-bright);
+  }
+  h2 .badge.bitforge { color: var(--bitforge); border-color: rgba(6,182,212,0.4); }
+  h2 .badge.bitaxe { color: var(--bitaxe); border-color: rgba(245,158,11,0.4); }
+  h2 .badge.avalon { color: var(--avalon); border-color: rgba(59,130,246,0.4); }
+  h2 .badge.nerd { color: var(--nerd); border-color: rgba(217,70,239,0.4); }
   label {
     display: block; font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.15em; color: var(--text-dim); margin-bottom: 6px;
   }
-  .field { margin-bottom: 18px; }
-  .hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
-
-  input[type=text], input[type=number], textarea {
-    width: 100%; background: var(--bg-2); border: 1px solid var(--line-bright);
-    color: var(--text); padding: 10px 12px; font-family: inherit; font-size: 12px;
-    border-radius: 2px;
+  label.checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  label.checkbox input { margin: 0; }
+  input[type="text"], input[type="number"], textarea {
+    width: 100%; padding: 9px 12px;
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--line-bright); border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
   }
   input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-  textarea { resize: vertical; min-height: 80px; font-size: 12px; }
-
-  .checkbox-row {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+  textarea { min-height: 70px; resize: vertical; }
+  code {
+    background: var(--bg-2); padding: 1px 5px; border-radius: 2px;
+    border: 1px solid var(--line); font-size: 11px;
   }
-  .checkbox-row input { width: 16px; height: 16px; accent-color: var(--accent); }
-  .checkbox-row label { margin: 0; }
-
-  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+  .hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; line-height: 1.5; }
 
   .btn {
-    background: var(--accent); border: none; color: #000;
-    padding: 10px 24px; font-family: inherit; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700;
-    cursor: pointer; border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; background: var(--accent); color: #000;
+    border: none; border-radius: 2px; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
   }
-  .btn:hover { background: #ffc640; }
+  .btn:hover { filter: brightness(1.1); }
   .btn.secondary {
-    background: transparent; border: 1px solid var(--line-bright);
-    color: var(--text-dim);
+    background: transparent; color: var(--text-dim);
+    border: 1px solid var(--line-bright);
   }
-  .btn.secondary:hover { color: var(--accent); border-color: var(--accent); }
+  .btn.secondary:hover { color: var(--text); border-color: var(--accent); }
 
   .toast {
-    position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
-    background: var(--green); color: #000; font-weight: 600; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.15em; border-radius: 2px;
-    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--green); color: #000;
+    padding: 12px 20px; border-radius: 2px;
+    font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    opacity: 0; transition: opacity 0.2s;
   }
   .toast.show { opacity: 1; }
 </style>
@@ -92,94 +107,225 @@
 <body>
 
 <div class="wrap">
-  <div class="topbar">
-    <div class="brand">FLEET <span class="sub">Configuration</span></div>
-    <a href="/">← Dashboard</a>
-  </div>
+<div class="topbar">
+  <div class="brand">FLEET<span class="sub">CONFIGURATION</span></div>
+  <a href="/">← Dashboard</a>
+</div>
 
-  <div class="panel">
-    <h2>Discovery</h2>
-    <div class="field">
-      <label>Subnet (CIDR — /24 only for scan)</label>
-      <input type="text" id="subnet" placeholder="192.168.1.0/24">
-      <div class="hint">Scan probes every IP in the range for AxeOS-style miners.</div>
-    </div>
-    <div class="checkbox-row">
-      <input type="checkbox" id="scan_enabled">
-      <label for="scan_enabled">Enable subnet scan</label>
-    </div>
+<div class="panel">
+  <h2>Discovery</h2>
+  <div class="field">
+    <label>Subnet (CIDR — /24 only for scan)</label>
+    <input type="text" id="subnet" placeholder="192.168.1.0/24">
+    <div class="hint">Scan probes every IP in the range for AxeOS-style miners.</div>
+  </div>
+  <div class="field">
+    <label class="checkbox">
+      <input type="checkbox" id="scan_enabled"> Enable subnet scan
+    </label>
     <div class="hint">Disable if you have a known fixed IP list and want to skip the broadcast.</div>
   </div>
+</div>
 
-  <div class="panel">
-    <h2>Avalon Q (CGMiner TCP)</h2>
+<div class="panel">
+  <h2>Avalon Q (CGMiner TCP)</h2>
+  <div class="field">
+    <label>Avalon IPs (one per line)</label>
+    <textarea id="avalon_ips" placeholder="192.168.1.160"></textarea>
+    <div class="hint">Avalon Q polled via CGMiner API on port 4028 (estats command). Subnet scan won't find these.</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Manual AxeOS IPs (always polled)</h2>
+  <div class="field">
+    <label>Bitaxe / BitForge / Nerd Miner IPs (one per line)</label>
+    <textarea id="miners" placeholder="192.168.1.10&#10;192.168.1.11"></textarea>
+    <div class="hint">Optional — useful if a miner is on a static IP outside your scanned subnet.</div>
+  </div>
+</div>
+
+<!-- ─── Per-class Alert Thresholds ─────────────────────────────────────── -->
+
+<div class="panel">
+  <h2>Alert Thresholds <span class="badge bitforge">BitForge</span></h2>
+  <div class="row-3">
     <div class="field">
-      <label>Avalon IPs (one per line)</label>
-      <textarea id="avalon_ips" placeholder="192.168.1.160"></textarea>
-      <div class="hint">Avalon Q polled via CGMiner API on port 4028 (estats command). Subnet scan won't find these.</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>Manual AxeOS IPs (always polled)</h2>
-    <div class="field">
-      <label>Bitaxe / BitForge / Nerd Miner IPs (one per line)</label>
-      <textarea id="miners" placeholder="192.168.1.10&#10;192.168.1.11"></textarea>
-      <div class="hint">Optional — useful if a miner is on a static IP outside your scanned subnet.</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>Pool Cross-Reference (optional)</h2>
-    <div class="field">
-      <label>BTC payout address</label>
-      <input type="text" id="btc_address" placeholder="bc1q...">
-      <div class="hint">Used to query SoloStrike / Public Pool API for worker stats — catches miners not in your IP list.</div>
+      <label>Temp Warn (°C)</label>
+      <input type="number" id="bitforge_temp_warn_c" step="1" placeholder="65">
     </div>
     <div class="field">
-      <label>Pool API base URL</label>
-      <input type="text" id="pool_api_url" placeholder="http://localhost/api">
-      <div class="hint">Leave blank if you don't run a local pool.</div>
+      <label>Temp Critical (°C)</label>
+      <input type="number" id="bitforge_temp_critical_c" step="1" placeholder="75">
+    </div>
+    <div class="field">
+      <label>Reject Warn (%)</label>
+      <input type="number" id="bitforge_reject_rate_warn_pct" step="0.1" placeholder="1.0">
     </div>
   </div>
+  <div class="hint">BitForges run similarly to Bitaxes — typical operating temps 60–70°C.</div>
+</div>
 
-  <div class="panel">
-    <h2>Alert Thresholds</h2>
-    <div class="row-2">
-      <div class="field">
-        <label>Temp Warning (°C)</label>
-        <input type="number" id="temp_warn_c" step="1" placeholder="65">
-        <div class="hint">Card turns orange at this temp.</div>
-      </div>
-      <div class="field">
-        <label>Temp Critical (°C)</label>
-        <input type="number" id="temp_critical_c" step="1" placeholder="75">
-        <div class="hint">Card turns red and triggers fleet alert.</div>
-      </div>
+<div class="panel">
+  <h2>Alert Thresholds <span class="badge bitaxe">Bitaxe</span></h2>
+  <div class="row-3">
+    <div class="field">
+      <label>Temp Warn (°C)</label>
+      <input type="number" id="bitaxe_temp_warn_c" step="1" placeholder="65">
     </div>
-    <div class="row-2">
-      <div class="field">
-        <label>Reject Rate Warning (%)</label>
-        <input type="number" id="reject_rate_warn_pct" step="0.1" placeholder="1.0">
-        <div class="hint">Flags any miner rejecting more than this share of submissions.</div>
-      </div>
-      <div class="field">
-        <label>Offline Grace Period (min)</label>
-        <input type="number" id="offline_grace_min" step="1" placeholder="5">
-        <div class="hint">A miner offline this long counts toward fleet health.</div>
-      </div>
+    <div class="field">
+      <label>Temp Critical (°C)</label>
+      <input type="number" id="bitaxe_temp_critical_c" step="1" placeholder="75">
+    </div>
+    <div class="field">
+      <label>Reject Warn (%)</label>
+      <input type="number" id="bitaxe_reject_rate_warn_pct" step="0.1" placeholder="1.0">
     </div>
   </div>
+  <div class="hint">Bitaxe Gammas / Supras typically operate at 60–70°C.</div>
+</div>
 
-  <div style="display: flex; gap: 12px; justify-content: flex-end;">
-    <a class="btn secondary" href="/">Cancel</a>
-    <button class="btn" id="save-btn">Save Configuration</button>
+<div class="panel">
+  <h2>Alert Thresholds <span class="badge avalon">Avalon Q</span></h2>
+  <div class="row-3">
+    <div class="field">
+      <label>Temp Warn (°C)</label>
+      <input type="number" id="avalon_temp_warn_c" step="1" placeholder="90">
+    </div>
+    <div class="field">
+      <label>Temp Critical (°C)</label>
+      <input type="number" id="avalon_temp_critical_c" step="1" placeholder="100">
+    </div>
+    <div class="field">
+      <label>Reject Warn (%)</label>
+      <input type="number" id="avalon_reject_rate_warn_pct" step="0.1" placeholder="0.5">
+    </div>
   </div>
+  <div class="hint">Canaan ASIC spec is 80–90°C normal operating range, 113°C absolute max. Defaults set conservatively below the safety ceiling.</div>
+</div>
+
+<div class="panel">
+  <h2>Alert Thresholds <span class="badge nerd">Nerd Miner</span></h2>
+  <div class="row-3">
+    <div class="field">
+      <label>Temp Warn (°C)</label>
+      <input type="number" id="nerd_temp_warn_c" step="1" placeholder="50">
+    </div>
+    <div class="field">
+      <label>Temp Critical (°C)</label>
+      <input type="number" id="nerd_temp_critical_c" step="1" placeholder="60">
+    </div>
+    <div class="field">
+      <label>Reject Warn (%)</label>
+      <input type="number" id="nerd_reject_rate_warn_pct" step="0.1" placeholder="2.0">
+    </div>
+  </div>
+  <div class="hint">ESP32-based lottery miners — rarely break 50°C. Higher reject tolerance expected (low-difficulty submissions).</div>
+</div>
+
+<div class="panel">
+  <h2>Global Alert Settings</h2>
+  <div class="field">
+    <label>Offline Grace Period (min)</label>
+    <input type="number" id="offline_grace_min" step="1" placeholder="5">
+    <div class="hint">A miner offline this long counts toward fleet health (applies to all classes).</div>
+  </div>
+</div>
+
+<!-- ─── Three pool cross-references ────────────────────────────────────── -->
+
+<div class="panel">
+  <h2>Pool 1 — Public Pool / SoloStrike / CKPool</h2>
+  <div class="field">
+    <label class="checkbox">
+      <input type="checkbox" id="ckpool_enabled"> Enable
+    </label>
+  </div>
+  <div class="row-2">
+    <div class="field">
+      <label>Display label</label>
+      <input type="text" id="ckpool_label" placeholder="Public Pool / SoloStrike">
+    </div>
+    <div class="field">
+      <label>BTC address</label>
+      <input type="text" id="ckpool_btc_address" placeholder="bc1q...">
+    </div>
+  </div>
+  <div class="field">
+    <label>Pool API base URL</label>
+    <input type="text" id="ckpool_base_url" placeholder="http://localhost/api">
+    <div class="hint">Endpoint: <code>&lt;base_url&gt;/client/&lt;btc_address&gt;</code>. Works with Public Pool, SoloStrike, and any CKPool fork.</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Pool 2 — AxeBCH2</h2>
+  <div class="field">
+    <label class="checkbox">
+      <input type="checkbox" id="axebch2_enabled"> Enable
+    </label>
+  </div>
+  <div class="row-2">
+    <div class="field">
+      <label>Display label</label>
+      <input type="text" id="axebch2_label" placeholder="AxeBCH2">
+    </div>
+    <div class="field">
+      <label>BCH address</label>
+      <input type="text" id="axebch2_btc_address" placeholder="bitcoincash:qrr...">
+    </div>
+  </div>
+  <div class="field">
+    <label>Pool API base URL</label>
+    <input type="text" id="axebch2_base_url" placeholder="http://localhost:3334/api">
+    <div class="hint">AxeBCH2 dev pool — same Public Pool fork, different host.</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Pool 3 — unMineable</h2>
+  <div class="field">
+    <label class="checkbox">
+      <input type="checkbox" id="unmineable_enabled"> Enable
+    </label>
+  </div>
+  <div class="row-2">
+    <div class="field">
+      <label>Display label</label>
+      <input type="text" id="unmineable_label" placeholder="unMineable">
+    </div>
+    <div class="field">
+      <label>Coin</label>
+      <input type="text" id="unmineable_coin" placeholder="KAS">
+    </div>
+  </div>
+  <div class="field">
+    <label>unMineable address</label>
+    <input type="text" id="unmineable_address" placeholder="kaspa:qz... or 0x...">
+    <div class="hint">Endpoint: <code>https://api.unminable.com/v4/address/&lt;addr&gt;?coin=&lt;COIN&gt;</code>. Common coins: KAS, ALPH, RVN, ETC, DOGE.</div>
+  </div>
+</div>
+
+<div style="display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 32px;">
+  <a class="btn secondary" href="/">Cancel</a>
+  <button class="btn" id="save-btn">Save Configuration</button>
+</div>
 </div>
 
 <div class="toast" id="toast">Saved</div>
 
 <script>
+const CLASSES = ['bitforge', 'bitaxe', 'avalon', 'nerd'];
+const POOLS = ['ckpool', 'axebch2', 'unmineable'];
+
+// Defaults must match server-side DEFAULT_CONFIG
+const DEFAULTS = {
+  bitforge: {temp_warn_c: 65, temp_critical_c: 75, reject_rate_warn_pct: 1.0},
+  bitaxe:   {temp_warn_c: 65, temp_critical_c: 75, reject_rate_warn_pct: 1.0},
+  avalon:   {temp_warn_c: 90, temp_critical_c: 100, reject_rate_warn_pct: 0.5},
+  nerd:     {temp_warn_c: 50, temp_critical_c: 60, reject_rate_warn_pct: 2.0},
+};
+
 async function load() {
   const r = await fetch('/api/config');
   const c = await r.json();
@@ -187,31 +333,71 @@ async function load() {
   document.getElementById('scan_enabled').checked = c.scan_enabled !== false;
   document.getElementById('avalon_ips').value = (c.avalon_ips || []).join('\n');
   document.getElementById('miners').value = (c.miners || []).join('\n');
-  document.getElementById('btc_address').value = c.btc_address || '';
-  document.getElementById('pool_api_url').value = c.pool_api_url || '';
-  const a = c.alerts || {};
-  document.getElementById('temp_warn_c').value = a.temp_warn_c ?? 65;
-  document.getElementById('temp_critical_c').value = a.temp_critical_c ?? 75;
-  document.getElementById('reject_rate_warn_pct').value = a.reject_rate_warn_pct ?? 1.0;
-  document.getElementById('offline_grace_min').value = a.offline_grace_min ?? 5;
+  document.getElementById('offline_grace_min').value = c.offline_grace_min ?? 5;
+
+  // Per-class thresholds
+  const abc = c.alerts_by_class || {};
+  for (const cls of CLASSES) {
+    const t = {...DEFAULTS[cls], ...(abc[cls] || {})};
+    document.getElementById(cls + '_temp_warn_c').value = t.temp_warn_c;
+    document.getElementById(cls + '_temp_critical_c').value = t.temp_critical_c;
+    document.getElementById(cls + '_reject_rate_warn_pct').value = t.reject_rate_warn_pct;
+  }
+
+  // Pool slots
+  const pools = c.pools || {};
+  for (const k of POOLS) {
+    const p = pools[k] || {};
+    document.getElementById(k + '_enabled').checked = !!p.enabled;
+    document.getElementById(k + '_label').value = p.label || '';
+    if (k === 'unmineable') {
+      document.getElementById(k + '_address').value = p.address || '';
+      document.getElementById(k + '_coin').value = p.coin || 'KAS';
+    } else {
+      document.getElementById(k + '_btc_address').value = p.btc_address || '';
+      document.getElementById(k + '_base_url').value = p.base_url || '';
+    }
+  }
 }
 
 document.getElementById('save-btn').addEventListener('click', async () => {
   const splitLines = (s) => s.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+
+  const alerts_by_class = {};
+  for (const cls of CLASSES) {
+    alerts_by_class[cls] = {
+      temp_warn_c: parseInt(document.getElementById(cls + '_temp_warn_c').value) || DEFAULTS[cls].temp_warn_c,
+      temp_critical_c: parseInt(document.getElementById(cls + '_temp_critical_c').value) || DEFAULTS[cls].temp_critical_c,
+      reject_rate_warn_pct: parseFloat(document.getElementById(cls + '_reject_rate_warn_pct').value) || DEFAULTS[cls].reject_rate_warn_pct,
+    };
+  }
+
+  const pools = {};
+  for (const k of POOLS) {
+    const p = {
+      enabled: document.getElementById(k + '_enabled').checked,
+      label: document.getElementById(k + '_label').value.trim(),
+    };
+    if (k === 'unmineable') {
+      p.address = document.getElementById(k + '_address').value.trim();
+      p.coin = document.getElementById(k + '_coin').value.trim() || 'KAS';
+    } else {
+      p.btc_address = document.getElementById(k + '_btc_address').value.trim();
+      p.base_url = document.getElementById(k + '_base_url').value.trim();
+    }
+    pools[k] = p;
+  }
+
   const cfg = {
     subnet: document.getElementById('subnet').value.trim(),
     scan_enabled: document.getElementById('scan_enabled').checked,
     avalon_ips: splitLines(document.getElementById('avalon_ips').value),
     miners: splitLines(document.getElementById('miners').value),
-    btc_address: document.getElementById('btc_address').value.trim(),
-    pool_api_url: document.getElementById('pool_api_url').value.trim(),
-    alerts: {
-      temp_warn_c: parseInt(document.getElementById('temp_warn_c').value) || 65,
-      temp_critical_c: parseInt(document.getElementById('temp_critical_c').value) || 75,
-      reject_rate_warn_pct: parseFloat(document.getElementById('reject_rate_warn_pct').value) || 1.0,
-      offline_grace_min: parseInt(document.getElementById('offline_grace_min').value) || 5,
-    }
+    offline_grace_min: parseInt(document.getElementById('offline_grace_min').value) || 5,
+    alerts_by_class,
+    pools,
   };
+
   await fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

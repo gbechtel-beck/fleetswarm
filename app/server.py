@@ -12,15 +12,25 @@ from poller import db_conn, get_status, init_db, load_config, save_config, run_o
 app = Flask(__name__, template_folder="/app/templates", static_folder="/app/static")
 
 
-def compute_health(miners, alerts):
+def thresholds_for(kind, alerts_by_class):
+    """Look up the right threshold set for a miner, falling back to 'unknown'."""
+    return alerts_by_class.get(kind) or alerts_by_class.get("unknown") or {
+        "temp_warn_c": 65, "temp_critical_c": 75, "reject_rate_warn_pct": 1.0,
+    }
+
+
+def compute_health(miners, cfg):
     """Roll up the fleet into a single health status with reasons.
+    Now uses per-class thresholds — Avalon at 70°C is normal, Bitaxe at 70°C is warm.
     Returns: (status, reasons[]) where status in {ok, warning, critical}.
     """
     reasons = []
     status = "ok"
 
     now = datetime.now(timezone.utc)
-    grace = timedelta(minutes=alerts["offline_grace_min"])
+    grace_min = cfg.get("offline_grace_min", 5)
+    grace = timedelta(minutes=grace_min)
+    alerts_by_class = cfg.get("alerts_by_class") or {}
 
     offline_long = 0
     hot = 0
@@ -28,7 +38,7 @@ def compute_health(miners, alerts):
     rejecting = 0
 
     for m in miners:
-        # Offline check — only count as a fleet alert if offline > grace period
+        # Offline check
         if not m["online"]:
             try:
                 last = datetime.fromisoformat(m["last_seen"]) if m["last_seen"] else None
@@ -38,21 +48,24 @@ def compute_health(miners, alerts):
                 pass
             continue
 
-        # Temperature checks (only for online miners)
+        # Per-class thresholds for this miner
+        t_cfg = thresholds_for(m.get("kind"), alerts_by_class)
+
+        # Temperature check
         t = m.get("temp_c")
         if t is not None:
-            if t >= alerts["temp_critical_c"]:
+            if t >= t_cfg["temp_critical_c"]:
                 overheated += 1
-            elif t >= alerts["temp_warn_c"]:
+            elif t >= t_cfg["temp_warn_c"]:
                 hot += 1
 
-        # Reject rate check — needs minimum sample size to avoid false positives
+        # Reject rate check (per-class threshold)
         acc = m.get("shares_accepted") or 0
         rej = m.get("shares_rejected") or 0
         total = acc + rej
         if total > 100:
             reject_pct = (rej / total) * 100
-            if reject_pct >= alerts["reject_rate_warn_pct"]:
+            if reject_pct >= t_cfg["reject_rate_warn_pct"]:
                 rejecting += 1
 
     if overheated:
@@ -60,7 +73,7 @@ def compute_health(miners, alerts):
         reasons.append(f"{overheated} miner{'s' if overheated != 1 else ''} overheating")
     if offline_long:
         status = "critical"
-        reasons.append(f"{offline_long} offline >{alerts['offline_grace_min']}m")
+        reasons.append(f"{offline_long} offline >{grace_min}m")
     if hot and status != "critical":
         status = "warning"
         reasons.append(f"{hot} running warm")
@@ -101,17 +114,15 @@ def api_fleet():
     total_hashrate = sum(r["hashrate_ghs"] or 0 for r in rows if r["online"])
     total_power = sum(r["power_w"] or 0 for r in rows if r["online"])
     online_count = sum(1 for r in rows if r["online"])
-    efficiency = (total_power / (total_hashrate / 1000)) if total_hashrate > 0 else None  # W/TH
+    efficiency = (total_power / (total_hashrate / 1000)) if total_hashrate > 0 else None
 
-    # Aggregate share stats
     total_accepted = sum(r["shares_accepted"] or 0 for r in rows if r["online"])
     total_rejected = sum(r["shares_rejected"] or 0 for r in rows if r["online"])
     fleet_reject_pct = None
     if total_accepted + total_rejected > 0:
         fleet_reject_pct = (total_rejected / (total_accepted + total_rejected)) * 100
 
-    # Health roll-up
-    health_status, health_reasons = compute_health(rows, cfg["alerts"])
+    health_status, health_reasons = compute_health(rows, cfg)
 
     return jsonify({
         "miners": rows,
@@ -130,15 +141,47 @@ def api_fleet():
             "status": health_status,
             "reasons": health_reasons,
         },
-        "thresholds": cfg["alerts"],   # so front-end can color cards consistently
+        "alerts_by_class": cfg.get("alerts_by_class") or {},
         "status": get_status(),
         "now": datetime.now(timezone.utc).isoformat(),
     })
 
 
+@app.route("/api/pools")
+def api_pools():
+    """Pool worker cross-reference data."""
+    cfg = load_config()
+
+    with closing(db_conn()) as conn:
+        rows = conn.execute(
+            """SELECT pool_key, worker_name, hashrate_ghs, best_diff, last_seen, fetched_at
+               FROM pool_workers
+               ORDER BY pool_key, hashrate_ghs DESC"""
+        ).fetchall()
+
+    # Group by pool
+    by_pool = {}
+    for r in rows:
+        by_pool.setdefault(r["pool_key"], []).append(dict(r))
+
+    # Reflect config so the front-end knows labels and which slots are configured
+    pools_cfg = cfg.get("pools") or {}
+    out = []
+    for key in ("ckpool", "axebch2", "unmineable"):
+        pcfg = pools_cfg.get(key, {})
+        out.append({
+            "key": key,
+            "label": pcfg.get("label", key),
+            "enabled": pcfg.get("enabled", False),
+            "configured": bool(pcfg.get("base_url") or pcfg.get("address")),
+            "coin": pcfg.get("coin"),
+            "workers": by_pool.get(key, []),
+        })
+    return jsonify({"pools": out})
+
+
 @app.route("/api/miner/<int:miner_id>/history")
 def api_miner_history(miner_id):
-    """Hashrate + temp history for charting."""
     hours = int(request.args.get("hours", 24))
     with closing(db_conn()) as conn:
         rows = conn.execute(
