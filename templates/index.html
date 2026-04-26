@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLEET / Miner Swarm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d10;
+    --bg-2: #11161b;
+    --bg-3: #161c23;
+    --panel: #0f1419;
+    --grid: #1a2128;
+    --line: #232b34;
+    --line-bright: #2f3a47;
+    --text: #d4dde6;
+    --text-dim: #6b7a8a;
+    --text-faint: #3f4c5b;
+    --accent: #ffb000;       /* amber — power/active */
+    --green: #4ade80;        /* hashing/online */
+    --red:   #ef4444;        /* fault */
+    --blue:  #60a5fa;        /* info/avalon */
+    --orange:#fb923c;        /* warmth/temp */
+    --magenta:#e879f9;       /* nerd miners — playful tier */
+    --cyan:  #67e8f9;        /* bitforge */
+    --hash:  #fde047;        /* hashrate yellow */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body {
+    background-image:
+      linear-gradient(rgba(255,176,0,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,176,0,0.015) 1px, transparent 1px),
+      radial-gradient(ellipse at top, rgba(255,176,0,0.04), transparent 60%);
+    background-size: 32px 32px, 32px 32px, 100% 100%;
+  }
+
+  /* ── Header ───────────────────────────────────────────────────────── */
+  .topbar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 24px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--bg-2), var(--bg));
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(8px);
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .brand .mark {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    text-shadow: 0 0 24px rgba(255,176,0,0.3);
+  }
+  .brand .mark::before {
+    content: '◆ ';
+    color: var(--accent);
+  }
+  .brand .sub {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+  .topstats {
+    display: flex;
+    gap: 28px;
+    justify-self: center;
+    align-items: center;
+  }
+  .ts-cell {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+  }
+  .ts-cell .lbl {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+    margin-bottom: 4px;
+  }
+  .ts-cell .val {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .ts-cell .val.hash { color: var(--hash); text-shadow: 0 0 16px rgba(253,224,71,0.25); }
+  .ts-cell .val.power { color: var(--accent); }
+  .ts-cell .unit { font-size: 11px; color: var(--text-dim); margin-left: 4px; font-weight: 400; }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid var(--line-bright);
+    border-radius: 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    background: var(--bg-2);
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .pill.health-ok { color: var(--green); border-color: rgba(74,222,128,0.4); }
+  .pill.health-ok .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .pill.health-warning { color: var(--orange); border-color: rgba(251,146,60,0.4); }
+  .pill.health-warning .dot { background: var(--orange); box-shadow: 0 0 8px var(--orange); }
+  .pill.health-critical { color: var(--red); border-color: rgba(239,68,68,0.5); animation: pulseAlert 1.5s ease-in-out infinite; }
+  .pill.health-critical .dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  @keyframes pulseAlert {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+  }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--line-bright);
+    color: var(--text-dim);
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.12s;
+    border-radius: 2px;
+  }
+  .btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(255,176,0,0.06); }
+
+  /* ── Layout ───────────────────────────────────────────────────────── */
+  .wrap { padding: 24px; max-width: 1800px; margin: 0 auto; }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+  }
+  .section-title::before {
+    content: '';
+    flex: 0 0 12px;
+    height: 1px;
+    background: var(--accent);
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .section-title .count {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* ── Miner grid ───────────────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 14px 14px 12px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .card:hover { border-color: var(--line-bright); }
+  .card.offline {
+    opacity: 0.5;
+    background: repeating-linear-gradient(
+      45deg, var(--panel), var(--panel) 8px,
+      var(--bg-2) 8px, var(--bg-2) 16px);
+  }
+  .card .kind-stripe {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 3px;
+  }
+  .card[data-kind="bitaxe"] .kind-stripe { background: var(--accent); }
+  .card[data-kind="bitforge"] .kind-stripe { background: var(--cyan); }
+  .card[data-kind="avalon"] .kind-stripe { background: var(--blue); }
+  .card[data-kind="nerd"] .kind-stripe { background: var(--magenta); }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+    margin-left: 8px;
+  }
+  .card-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .card-kind {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-faint);
+  }
+  .card[data-kind="bitaxe"] .card-kind { color: var(--accent); }
+  .card[data-kind="bitforge"] .card-kind { color: var(--cyan); }
+  .card[data-kind="avalon"] .card-kind { color: var(--blue); }
+  .card[data-kind="nerd"] .card-kind { color: var(--magenta); }
+
+  .card-ip {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-left: 8px;
+    margin-top: -8px;
+    margin-bottom: 10px;
+  }
+  .card-ip a { color: var(--text-dim); text-decoration: none; }
+  .card-ip a:hover { color: var(--accent); text-decoration: underline; }
+
+  .hashrate-display {
+    margin-left: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .hashrate-display .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--hash);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 20px rgba(253,224,71,0.2);
+  }
+  .hashrate-display .unit {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .card.offline .hashrate-display .num {
+    color: var(--text-faint);
+    text-shadow: none;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    margin-left: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-row .k {
+    color: var(--text-faint);
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .stat-row .v { color: var(--text); }
+  .stat-row .v.warm { color: var(--orange); }
+  .stat-row .v.hot { color: var(--red); }
+  .stat-row .v.good { color: var(--green); }
+
+  .status-dot {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .card.offline .status-dot {
+    background: var(--red);
+    box-shadow: none;
+    animation: none;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Empty state ──────────────────────────────────────────────────── */
+  .empty {
+    border: 1px dashed var(--line-bright);
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--text-dim);
+    border-radius: 3px;
+    margin: 24px 0;
+  }
+  .empty h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    color: var(--text);
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .empty p { font-size: 12px; line-height: 1.7; max-width: 520px; margin: 0 auto 16px; }
+  .empty code {
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 2px;
+    color: var(--accent);
+    font-size: 11px;
+  }
+
+  /* ── Footer ───────────────────────────────────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--line);
+    padding: 14px 24px;
+    margin-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .footer a { color: var(--text-dim); text-decoration: none; }
+  .footer a:hover { color: var(--accent); }
+
+  .updating { animation: blink 0.6s ease-in-out; }
+  @keyframes blink {
+    0% { background-color: rgba(255,176,0,0.08); }
+    100% { background-color: transparent; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="mark">FLEET</div>
+    <div class="sub">Miner Swarm Dashboard</div>
+  </div>
+
+  <div class="topstats">
+    <div class="ts-cell">
+      <div class="lbl">Total Hashrate</div>
+      <div class="val hash"><span id="total-hash">—</span><span class="unit">TH/s</span></div>
+    </div>
+    <div class="ts-cell">
+      <div class="lbl">Online</div>
+      <div class="val"><span id="online-count">—</span><span class="unit" id="total-count">/—</span></div>
+    </div>
+    <div class="ts-cell">
+      <div class="lbl">Power Draw</div>
+      <div class="val power"><span id="total-power">—</span><span class="unit">W</span></div>
+    </div>
+    <div class="ts-cell">
+      <div class="lbl">Efficiency</div>
+      <div class="val"><span id="efficiency">—</span><span class="unit">W/TH</span></div>
+    </div>
+    <div class="ts-cell">
+      <div class="lbl">Reject Rate</div>
+      <div class="val"><span id="reject-rate">—</span><span class="unit">%</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="pill" id="health-pill">
+      <span class="dot"></span>
+      <span id="health-label">—</span>
+    </span>
+    <button class="btn" id="poll-btn">Poll Now</button>
+    <a class="btn" href="/config">Config</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="section-title" id="title-bitforge" style="display:none">
+    <span>BitForge</span><span class="count" id="count-bitforge"></span>
+  </div>
+  <div class="grid" id="grid-bitforge"></div>
+
+  <div class="section-title" id="title-bitaxe" style="display:none">
+    <span>Bitaxe</span><span class="count" id="count-bitaxe"></span>
+  </div>
+  <div class="grid" id="grid-bitaxe"></div>
+
+  <div class="section-title" id="title-avalon" style="display:none">
+    <span>Avalon</span><span class="count" id="count-avalon"></span>
+  </div>
+  <div class="grid" id="grid-avalon"></div>
+
+  <div class="section-title" id="title-nerd" style="display:none">
+    <span>Nerd Miners</span><span class="count" id="count-nerd"></span>
+  </div>
+  <div class="grid" id="grid-nerd"></div>
+
+  <div class="section-title" id="title-unknown" style="display:none">
+    <span>Unclassified</span><span class="count" id="count-unknown"></span>
+  </div>
+  <div class="grid" id="grid-unknown"></div>
+
+  <div id="empty-state" class="empty" style="display:none">
+    <h3>No miners found yet</h3>
+    <p>The poller is scanning your subnet but hasn't found any AxeOS or CGMiner endpoints. If your fleet is on a different subnet, or if you need to add Avalon Q IPs explicitly, head to <a href="/config" style="color:var(--accent)">/config</a>.</p>
+    <p>Default subnet: <code>192.168.1.0/24</code> &nbsp; • &nbsp; AxeOS port: <code>80</code> &nbsp; • &nbsp; CGMiner port: <code>4028</code></p>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <div>FLEET v0.1 · Polling every 30s · Last update <span id="last-update">—</span></div>
+  <div><a href="/api/fleet" target="_blank">JSON</a> · <a href="/api/health" target="_blank">Health</a></div>
+</footer>
+
+<script>
+const fmt = {
+  hash(ghs) {
+    if (!ghs) return '0';
+    if (ghs >= 1000) return (ghs / 1000).toFixed(2);  // TH
+    return ghs.toFixed(0);                            // GH
+  },
+  hashUnit(ghs) {
+    if (!ghs) return 'GH/s';
+    return ghs >= 1000 ? 'TH/s' : 'GH/s';
+  },
+  num(n, digits = 0) {
+    if (n == null) return '—';
+    return Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    });
+  },
+  age(iso) {
+    if (!iso) return '—';
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 60000) return Math.floor(ms / 1000) + 's ago';
+    if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago';
+    return Math.floor(ms / 3600000) + 'h ago';
+  }
+};
+
+// Threshold-aware temp class — uses values from API so config changes propagate
+function tempClass(t, thresholds) {
+  if (t == null) return '';
+  if (t >= (thresholds?.temp_critical_c ?? 75)) return 'hot';
+  if (t >= (thresholds?.temp_warn_c ?? 65)) return 'warm';
+  return 'good';
+}
+
+function renderCard(m, thresholds) {
+  const offline = !m.online;
+  const ghs = m.hashrate_ghs || 0;
+  const kindLabel = ({
+    'bitaxe': 'BITAXE',
+    'bitforge': 'BITFORGE',
+    'avalon': 'AVALON',
+    'nerd': 'NERD MINER',
+    'unknown': '—'
+  })[m.kind] || m.kind?.toUpperCase();
+
+  const stats = [];
+  if (m.temp_c != null)
+    stats.push(`<div class="stat-row"><span class="k">Temp</span><span class="v ${tempClass(m.temp_c, thresholds)}">${m.temp_c.toFixed(1)}°C</span></div>`);
+  if (m.power_w != null)
+    stats.push(`<div class="stat-row"><span class="k">Power</span><span class="v">${m.power_w.toFixed(1)}W</span></div>`);
+  if (m.fan_pct != null)
+    stats.push(`<div class="stat-row"><span class="k">Fan</span><span class="v">${m.fan_pct}${m.kind === 'avalon' ? ' RPM' : '%'}</span></div>`);
+  if (m.shares_accepted != null)
+    stats.push(`<div class="stat-row"><span class="k">Acc</span><span class="v">${fmt.num(m.shares_accepted)}</span></div>`);
+  if (m.shares_rejected != null)
+    stats.push(`<div class="stat-row"><span class="k">Rej</span><span class="v ${m.shares_rejected > 0 ? 'warm' : ''}">${fmt.num(m.shares_rejected)}</span></div>`);
+  if (m.best_diff)
+    stats.push(`<div class="stat-row"><span class="k">Best</span><span class="v good">${m.best_diff}</span></div>`);
+  if (offline)
+    stats.push(`<div class="stat-row"><span class="k">Last seen</span><span class="v">${fmt.age(m.last_seen)}</span></div>`);
+
+  return `
+    <div class="card ${offline ? 'offline' : ''}" data-kind="${m.kind}">
+      <div class="kind-stripe"></div>
+      <div class="status-dot"></div>
+      <div class="card-head">
+        <div class="card-name">${m.hostname || m.ip}</div>
+        <div class="card-kind">${kindLabel}</div>
+      </div>
+      <div class="card-ip"><a href="http://${m.ip}" target="_blank">${m.ip}</a></div>
+      <div class="hashrate-display">
+        <span class="num">${fmt.hash(ghs)}</span>
+        <span class="unit">${fmt.hashUnit(ghs)}</span>
+      </div>
+      <div class="stats">${stats.join('')}</div>
+    </div>
+  `;
+}
+
+const KIND_ORDER = ['bitforge', 'bitaxe', 'avalon', 'nerd', 'unknown'];
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/fleet');
+    const data = await r.json();
+
+    // Top stats
+    document.getElementById('total-hash').textContent = data.totals.hashrate_ths.toFixed(2);
+    document.getElementById('online-count').textContent = data.totals.online;
+    document.getElementById('total-count').textContent = '/' + data.totals.total;
+    document.getElementById('total-power').textContent = fmt.num(data.totals.power_w, 0);
+    document.getElementById('efficiency').textContent = data.totals.efficiency_w_per_th
+      ? data.totals.efficiency_w_per_th.toFixed(0) : '—';
+    document.getElementById('reject-rate').textContent = data.totals.reject_rate_pct != null
+      ? data.totals.reject_rate_pct.toFixed(2) : '—';
+
+    // Health pill
+    const pill = document.getElementById('health-pill');
+    pill.className = 'pill health-' + data.health.status;
+    document.getElementById('health-label').textContent = data.health.reasons.join(' · ');
+
+    // Group miners by kind
+    const buckets = {};
+    KIND_ORDER.forEach(k => buckets[k] = []);
+    (data.miners || []).forEach(m => {
+      const k = KIND_ORDER.includes(m.kind) ? m.kind : 'unknown';
+      buckets[k].push(m);
+    });
+
+    const thresholds = data.thresholds || {};
+
+    KIND_ORDER.forEach(kind => {
+      const grid = document.getElementById('grid-' + kind);
+      const title = document.getElementById('title-' + kind);
+      const count = document.getElementById('count-' + kind);
+      const items = buckets[kind];
+      if (!items.length) {
+        title.style.display = 'none';
+        grid.innerHTML = '';
+        return;
+      }
+      title.style.display = 'flex';
+      const onlineN = items.filter(i => i.online).length;
+      count.textContent = `${onlineN}/${items.length}`;
+      grid.innerHTML = items.map(m => renderCard(m, thresholds)).join('');
+    });
+
+    // Empty state
+    document.getElementById('empty-state').style.display =
+      (data.miners && data.miners.length) ? 'none' : 'block';
+
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('refresh error', e);
+  }
+}
+
+document.getElementById('poll-btn').addEventListener('click', async (e) => {
+  e.target.textContent = 'Polling…';
+  e.target.disabled = true;
+  try {
+    await fetch('/api/poll-now', { method: 'POST' });
+    await refresh();
+  } finally {
+    e.target.textContent = 'Poll Now';
+    e.target.disabled = false;
+  }
+});
+
+refresh();
+setInterval(refresh, 5000);   // Re-render UI every 5s; backend polls every 30s
+</script>
+
+</body>
+</html>

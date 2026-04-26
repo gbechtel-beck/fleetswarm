@@ -1,0 +1,20 @@
+# Plain docker-compose for non-Umbrel users.
+# For the Umbrel App Store version, see:
+#   https://github.com/gbechtel-beck/umbrelsolostrike-app-store
+
+version: "3.8"
+
+services:
+  fleetswarm:
+    image: ghcr.io/gbechtel-beck/fleetswarm:latest
+    container_name: fleetswarm
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/data
+    environment:
+      POLL_INTERVAL: "30"
+      DEFAULT_SUBNET: "192.168.1.0/24"
+      # Optional: set TZ to your local timezone for accurate timestamps
+      # TZ: America/New_York
