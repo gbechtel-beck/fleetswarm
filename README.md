@@ -57,7 +57,7 @@ seconds without any config changes.
 
 ### Option 1 — Umbrel (one-click, recommended)
 
-1. Add the Stub1958 community app store: **App Store → ⋯ → Community App
+1. Add the SoloStrike community app store: **App Store → ⋯ → Community App
    Stores → Add** and paste:
 
    ```
